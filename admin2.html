@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUXE — Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pink: {
+                            50:'#fdf2f5',100:'#fce7ee',200:'#f9d0e0',300:'#f3a8c6',
+                            400:'#e8a0bf',500:'#c76a8a',600:'#b05070',700:'#8f3d58',
+                            800:'#6e2e45',900:'#4d1f31'
+                        }
+                    },
+                    fontFamily: {
+                        display:['Cormorant Garamond','serif'],
+                        sans:['DM Sans','sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+        body { font-family:'DM Sans',sans-serif; background:#fdf2f5; color:#2d2d2d; }
+        ::-webkit-scrollbar { width:6px; }
+        ::-webkit-scrollbar-thumb { background:#f3a8c6; border-radius:3px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        .font-display { font-family:'Cormorant Garamond',serif; }
+        .input-field { transition:border-color .2s,box-shadow .2s; }
+        .input-field:focus { border-color:#c76a8a; box-shadow:0 0 0 3px rgba(199,106,138,.1); outline:none; }
+        .btn-primary { position:relative; overflow:hidden; background:#c76a8a; color:white; transition:background .2s,transform .15s; }
+        .btn-primary:active { transform:scale(.97); background:#b05070; }
+        .btn-primary::after { content:''; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.15),transparent); pointer-events:none; }
+        .btn-secondary { background:white; color:#c76a8a; border:1.5px solid #f3a8c6; transition:background .2s,transform .15s; }
+        .btn-secondary:active { transform:scale(.97); background:#fdf2f5; }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        .fade-up { animation:fadeUp .4s cubic-bezier(.16,1,.3,1) both; }
+        @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+        .skeleton { background:linear-gradient(90deg,#fce7ee 25%,#f9d0e0 50%,#fce7ee 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:10px; }
+        .admin-card { background:white; border-radius:16px; border:1px solid rgba(199,106,138,.08); box-shadow:0 1px 4px rgba(199,106,138,.04); }
+        .tab-btn { transition:color .2s,background .2s; }
+        .tab-btn.active { color:white; background:#c76a8a; }
+        .status-badge { font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; text-transform:uppercase; letter-spacing:.3px; }
+        @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+    </style>
+</head>
+<body>
+
+    <!-- Toast -->
+    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[90%] max-w-sm pointer-events-none"></div>
+
+    <!-- Admin Login -->
+    <div id="admin-login" class="min-h-screen flex items-center justify-center px-4">
+        <div class="w-full max-w-sm">
+            <div class="text-center mb-8">
+                <h1 class="font-display text-4xl font-bold text-pink-800">LUXE</h1>
+                <p class="text-sm text-pink-400 mt-1">Admin Panel</p>
+            </div>
+            <div class="admin-card p-6">
+                <form onsubmit="adminLogin(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Username</label>
+                        <input type="text" id="admin-username" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="admin">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Password</label>
+                        <input type="password" id="admin-password" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="Enter password">
+                    </div>
+                    <button type="submit" id="login-btn" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold">
+                        <span id="login-btn-text">Login</span>
+                    </button>
+                    <p id="login-error" class="text-xs text-red-500 text-center hidden">Invalid username or password</p>
+                </form>
+            </div>
+            <p class="text-[10px] text-pink-300 text-center mt-4">Login credentials are stored in Supabase admins table</p>
+        </div>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="admin-panel" class="hidden min-h-screen">
+
+        <!-- Top Nav -->
+        <nav class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-pink-100/60">
+            <div class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="font-display text-xl font-bold text-pink-800">LUXE</span>
+                    <span class="text-[10px] font-bold text-white bg-pink-500 px-2 py-0.5 rounded-full uppercase tracking-wider">Admin</span>
+                </div>
+                <button onclick="adminLogout()" class="text-xs font-medium text-pink-500 hover:text-pink-700 transition-colors">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i> Logout
+                </button>
+            </div>
+        </nav>
+
+        <!-- Tab Nav -->
+        <div class="sticky top-14 z-40 bg-pink-50/90 backdrop-blur-md border-b border-pink-100/60">
+            <div class="max-w-4xl mx-auto px-4 flex gap-2 py-3 overflow-x-auto">
+                <button onclick="switchTab('products')" class="tab-btn active text-xs font-semibold px-4 py-2 rounded-full whitespace-nowrap" data-tab="products">
+                    <i class="fa-solid fa-bag-shopping mr-1.5"></i> Products
+                </button>
+                <button onclick="switchTab('orders')" class="tab-btn text-xs font-semibold px-4 py-2 rounded-full whitespace-nowrap text-pink-500" data-tab="orders">
+                    <i class="fa-solid fa-receipt mr-1.5"></i> Orders
+                </button>
+                <button onclick="switchTab('influencers')" class="tab-btn text-xs font-semibold px-4 py-2 rounded-full whitespace-nowrap text-pink-500" data-tab="influencers">
+                    <i class="fa-solid fa-users mr-1.5"></i> Influencers
+                </button>
+                <button onclick="switchTab('customers')" class="tab-btn text-xs font-semibold px-4 py-2 rounded-full whitespace-nowrap text-pink-500" data-tab="customers">
+                    <i class="fa-solid fa-user mr-1.5"></i> Customers
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="max-w-4xl mx-auto px-4 py-5">
+
+            <!-- Products Tab -->
+            <div id="tab-products" class="admin-tab">
+                <div class="admin-card p-5 mb-5 fade-up">
+                    <h3 class="font-display text-lg font-bold text-pink-900 mb-4">Add New Product</h3>
+                    <form id="add-product-form" onsubmit="addProduct(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Product Name</label>
+                                <input type="text" id="ap-name" required class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm" placeholder="Product name">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Price (₹)</label>
+                                <input type="number" id="ap-price" required min="1" class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm" placeholder="999">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Description</label>
+                            <textarea id="ap-desc" rows="2" class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm resize-none" placeholder="Optional description"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Images</label>
+                            <div id="image-upload-zone" class="border-2 border-dashed border-pink-200 rounded-xl p-6 text-center cursor-pointer hover:border-pink-400 hover:bg-pink-50/50 transition-colors"
+                                 onclick="document.getElementById('ap-images').click()">
+                                <i class="fa-solid fa-cloud-arrow-up text-2xl text-pink-300 mb-2"></i>
+                                <p class="text-xs text-pink-400">Click to upload images</p>
+                                <p class="text-[10px] text-pink-300 mt-1">JPG, PNG — multiple allowed</p>
+                                <input type="file" id="ap-images" multiple accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+                            </div>
+                            <div id="image-previews" class="flex flex-wrap gap-2 mt-3"></div>
+                        </div>
+                        <button type="submit" id="add-product-btn" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold">Add Product</button>
+                    </form>
+                </div>
+                <h3 class="text-xs font-semibold text-pink-400 uppercase tracking-wider mb-3">All Products</h3>
+                <div id="admin-product-list" class="space-y-3">
+                    <div class="skeleton h-20"></div>
+                    <div class="skeleton h-20"></div>
+                </div>
+            </div>
+
+            <!-- Orders Tab -->
+            <div id="tab-orders" class="admin-tab hidden">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-display text-lg font-bold text-pink-900">All Orders</h3>
+                    <select id="order-filter" onchange="loadOrders()" class="text-xs font-medium px-3 py-2 rounded-lg border border-pink-200 bg-white text-pink-700">
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div id="admin-order-list" class="space-y-3">
+                    <div class="skeleton h-28"></div>
+                    <div class="skeleton h-28"></div>
+                </div>
+            </div>
+
+            <!-- Influencers Tab -->
+            <div id="tab-influencers" class="admin-tab hidden">
+                <div class="admin-card p-5 mb-5 fade-up">
+                    <h3 class="font-display text-lg font-bold text-pink-900 mb-4">Add Influencer</h3>
+                    <form onsubmit="addInfluencer(event)" class="space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Name</label>
+                                <input type="text" id="ai-name" required class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm" placeholder="Full name">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Email</label>
+                                <input type="email" id="ai-email" required class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm" placeholder="email@example.com">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Password</label>
+                                <input type="text" id="ai-pass" required class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm" placeholder="Set password">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Referral Code</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="ai-code" required class="input-field w-full px-4 py-2.5 rounded-xl border border-pink-200 text-sm uppercase" placeholder="e.g. SARAH20">
+                                    <button type="button" onclick="generateRefCode()" class="btn-secondary px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap">
+                                        <i class="fa-solid fa-shuffle"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold">Add Influencer</button>
+                    </form>
+                </div>
+                <h3 class="text-xs font-semibold text-pink-400 uppercase tracking-wider mb-3">All Influencers</h3>
+                <div id="admin-inf-list" class="space-y-3">
+                    <div class="skeleton h-20"></div>
+                    <div class="skeleton h-20"></div>
+                </div>
+            </div>
+
+            <!-- Customers Tab -->
+            <div id="tab-customers" class="admin-tab hidden">
+                <h3 class="font-display text-lg font-bold text-pink-900 mb-4">All Customers</h3>
+                <div id="admin-customer-list" class="space-y-3">
+                    <div class="skeleton h-16"></div>
+                    <div class="skeleton h-16"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /* ==============================================
+       SUPABASE CONFIG — Apni keys yahan daalo
+    ============================================== */
+    const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+    const SUPABASE_KEY = 'YOUR_ANON_KEY';
+
+    /* YE LINE FIXED HAI — sb naam ka variable hai */
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let uploadedImages = [];
+    let currentTab = 'products';
+
+    /* ==============================================
+       ADMIN LOGIN — Supabase se check karta hai
+    ============================================== */
+    async function adminLogin(e) {
+        e.preventDefault();
+        const username = document.getElementById('admin-username').value.trim();
+        const password = document.getElementById('admin-password').value;
+        const btn = document.getElementById('login-btn-text');
+        const errEl = document.getElementById('login-error');
+        errEl.classList.add('hidden');
+
+        btn.textContent = 'Checking...';
+
+        try {
+            const { data, error } = await db
+                .from('admins')
+                .select('*')
+                .eq('username', username)
+                .eq('password', password)
+                .single();
+
+            if (error || !data) {
+                errEl.classList.remove('hidden');
+                btn.textContent = 'Login';
+                return;
+            }
+
+            /* Login successful */
+            document.getElementById('admin-login').classList.add('hidden');
+            document.getElementById('admin-panel').classList.remove('hidden');
+            loadAllData();
+        } catch (err) {
+            console.error('Admin login error:', err);
+            errEl.classList.remove('hidden');
+            btn.textContent = 'Login';
+        }
+    }
+
+    function adminLogout() {
+        document.getElementById('admin-panel').classList.add('hidden');
+        document.getElementById('admin-login').classList.remove('hidden');
+        document.getElementById('admin-username').value = '';
+        document.getElementById('admin-password').value = '';
+        document.getElementById('login-error').classList.add('hidden');
+        document.getElementById('login-btn-text').textContent = 'Login';
+    }
+
+    /* ==============================================
+       TAB SWITCHING
+    ============================================== */
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.admin-tab').forEach(el => el.classList.add('hidden'));
+        document.getElementById('tab-' + tab).classList.remove('hidden');
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            if (btn.dataset.tab === tab) {
+                btn.classList.add('active');
+                btn.classList.remove('text-pink-500');
+            } else {
+                btn.classList.remove('active');
+                btn.classList.add('text-pink-500');
+            }
+        });
+        if (tab === 'orders') loadOrders();
+        if (tab === 'influencers') loadInfluencers();
+        if (tab === 'customers') loadCustomers();
+    }
+
+    /* ==============================================
+       LOAD ALL DATA
+    ============================================== */
+    function loadAllData() {
+        loadAdminProducts();
+        loadOrders();
+        loadInfluencers();
+        loadCustomers();
+    }
+
+    /* ==============================================
+       PRODUCTS
+    ============================================== */
+    async function loadAdminProducts() {
+        const list = document.getElementById('admin-product-list');
+        try {
+            const { data, error } = await db.from('products').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            const products = data || [];
+            if (products.length === 0) {
+                list.innerHTML = '<p class="text-sm text-pink-400 text-center py-8">No products yet. Add one above.</p>';
+                return;
+            }
+            list.innerHTML = products.map(p => {
+                const img = (p.images && p.images.length > 0) ? p.images[0] : '';
+                return `<div class="admin-card p-4 flex items-center gap-4 fade-up">
+                    ${img ? `<img src="${img}" class="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-pink-50" onerror="this.style.display='none'">` : `<div class="w-16 h-16 rounded-xl bg-pink-50 flex-shrink-0 flex items-center justify-center"><i class="fa-solid fa-image text-pink-200"></i></div>`}
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-pink-900 truncate">${p.name}</p>
+                        <p class="text-sm font-bold text-pink-600 mt-0.5">₹${Number(p.price).toLocaleString('en-IN')}</p>
+                        <p class="text-[10px] text-pink-300 mt-0.5">${p.images ? p.images.length : 0} image(s)</p>
+                    </div>
+                    <button onclick="deleteProduct('${p.id}')" class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors flex-shrink-0" title="Delete">
+                        <i class="fa-solid fa-trash text-xs"></i>
+                    </button>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load products. Check Supabase keys.</p>';
+        }
+    }
+
+    async function handleImageUpload(e) {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+        const previewContainer = document.getElementById('image-previews');
+        for (const file of files) {
+            if (!file.type.startsWith('image/')) continue;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const div = document.createElement('div');
+                div.className = 'relative';
+                div.innerHTML = `<img src="${ev.target.result}" class="w-20 h-20 rounded-xl object-cover border border-pink-100">
+                    <span class="upload-status absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl"><i class="fa-solid fa-spinner fa-spin text-white text-xs"></i></span>`;
+                previewContainer.appendChild(div);
+            };
+            reader.readAsDataURL(file);
+            try {
+                const fileName = `products/${Date.now()}_${Math.random().toString(36).substring(7)}_${file.name}`;
+                const { data, error } = await db.storage.from('product-images').upload(fileName, file);
+                if (error) throw error;
+                const { data: urlData } = db.storage.from('product-images').getPublicUrl(data.path);
+                uploadedImages.push(urlData.publicUrl);
+                const statuses = previewContainer.querySelectorAll('.upload-status');
+                if (statuses.length > 0) {
+                    const last = statuses[statuses.length - 1];
+                    last.innerHTML = '<i class="fa-solid fa-check text-green-400 text-sm"></i>';
+                    last.style.background = 'rgba(0,0,0,0.15)';
+                    setTimeout(() => last.remove(), 1000);
+                }
+            } catch (err) {
+                console.error(err);
+                const statuses = previewContainer.querySelectorAll('.upload-status');
+                if (statuses.length > 0) {
+                    statuses[statuses.length - 1].innerHTML = '<i class="fa-solid fa-xmark text-red-400 text-sm"></i>';
+                }
+                showToast('Image upload failed', 'error');
+            }
+        }
+        e.target.value = '';
+    }
+
+    async function addProduct(e) {
+        e.preventDefault();
+        const btn = document.getElementById('add-product-btn');
+        btn.disabled = true;
+        btn.textContent = 'Adding...';
+        try {
+            const { error } = await db.from('products').insert([{
+                name: document.getElementById('ap-name').value.trim(),
+                price: Number(document.getElementById('ap-price').value),
+                description: document.getElementById('ap-desc').value.trim() || null,
+                images: uploadedImages.length > 0 ? uploadedImages : null
+            }]);
+            if (error) throw error;
+            showToast('Product added!', 'success');
+            document.getElementById('add-product-form').reset();
+            document.getElementById('image-previews').innerHTML = '';
+            uploadedImages = [];
+            loadAdminProducts();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to add product', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Add Product';
+        }
+    }
+
+    async function deleteProduct(id) {
+        if (!confirm('Delete this product?')) return;
+        try {
+            const { error } = await db.from('products').delete().eq('id', id);
+            if (error) throw error;
+            showToast('Product deleted', 'success');
+            loadAdminProducts();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to delete', 'error');
+        }
+    }
+
+    /* ==============================================
+       ORDERS
+    ============================================== */
+    async function loadOrders() {
+        const list = document.getElementById('admin-order-list');
+        const filter = document.getElementById('order-filter').value;
+        try {
+            let query = db.from('orders').select('id, customer_name, phone, address, product_name, amount, status, referral_code, created_at, influencer_id').order('created_at', { ascending: false });
+            if (filter !== 'all') query = query.eq('status', filter);
+            const { data, error } = await query;
+            if (error) throw error;
+            const orders = data || [];
+            if (orders.length === 0) {
+                list.innerHTML = '<p class="text-sm text-pink-400 text-center py-8">No orders found</p>';
+                return;
+            }
+            list.innerHTML = orders.map(o => {
+                const styles = { pending:'bg-amber-50 text-amber-600', shipped:'bg-blue-50 text-blue-600', delivered:'bg-green-50 text-green-600', cancelled:'bg-red-50 text-red-500' };
+                const date = new Date(o.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+                const comm = o.status === 'delivered' && o.influencer_id ? `<p class="text-[10px] text-green-500 mt-0.5">Commission: ₹${Math.round(Number(o.amount) * 0.2)}</p>` : '';
+                return `<div class="admin-card p-4 fade-up">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-pink-900">${o.customer_name}</p>
+                            <p class="text-xs text-pink-400 mt-0.5">${o.phone} · ${date}</p>
+                        </div>
+                        <select onchange="updateOrderStatus('${o.id}', this.value)" class="status-badge cursor-pointer border-0 ${styles[o.status] || styles.pending}" style="appearance:auto;padding-right:8px;">
+                            <option value="pending" ${o.status==='pending'?'selected':''}>Pending</option>
+                            <option value="shipped" ${o.status==='shipped'?'selected':''}>Shipped</option>
+                            <option value="delivered" ${o.status==='delivered'?'selected':''}>Delivered</option>
+                            <option value="cancelled" ${o.status==='cancelled'?'selected':''}>Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="bg-pink-50/60 rounded-xl p-3 mb-2">
+                        <p class="text-xs text-pink-500 font-medium">${o.product_name}</p>
+                        <p class="text-sm font-bold text-pink-700 mt-0.5">₹${Number(o.amount).toLocaleString('en-IN')}</p>
+                    </div>
+                    <p class="text-xs text-pink-400"><i class="fa-solid fa-location-dot mr-1 text-pink-300"></i>${o.address || 'No address'}</p>
+                    ${o.referral_code ? `<p class="text-[10px] text-pink-300 mt-1"><i class="fa-solid fa-link mr-1"></i>Ref: ${o.referral_code}</p>` : ''}
+                    ${comm}
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load orders</p>';
+        }
+    }
+
+    async function updateOrderStatus(orderId, newStatus) {
+        try {
+            const { error } = await db.from('orders').update({ status: newStatus }).eq('id', orderId);
+            if (error) throw error;
+            showToast(`Status → ${newStatus}`, 'success');
+            loadOrders();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to update', 'error');
+            loadOrders();
+        }
+    }
+
+    /* ==============================================
+       INFLUENCERS
+    ============================================== */
+    async function loadInfluencers() {
+        const list = document.getElementById('admin-inf-list');
+        try {
+            const { data: infs, error } = await db.from('influencers').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            const influencers = infs || [];
+            if (influencers.length === 0) {
+                list.innerHTML = '<p class="text-sm text-pink-400 text-center py-8">No influencers yet</p>';
+                return;
+            }
+            const { data: orders } = await db.from('orders').select('influencer_id, amount, status');
+            list.innerHTML = influencers.map(inf => {
+                const infOrders = (orders || []).filter(o => o.influencer_id === inf.id);
+                const delivered = infOrders.filter(o => o.status === 'delivered');
+                const earnings = delivered.reduce((s, o) => s + (Number(o.amount) * 0.2), 0);
+                return `<div class="admin-card p-4 fade-up">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-pink-900">${inf.name}</p>
+                            <p class="text-xs text-pink-400 mt-0.5">${inf.email}</p>
+                            <div class="flex items-center gap-2 mt-2">
+                                <span class="text-[10px] font-bold text-white bg-pink-500 px-2 py-0.5 rounded-md uppercase">${inf.referral_code}</span>
+                                <button onclick="copyText('${inf.referral_code}')" class="text-[10px] text-pink-400 hover:text-pink-600"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <button onclick="deleteInfluencer('${inf.id}')" class="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 transition-colors"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                    </div>
+                    <div class="flex gap-4 mt-3 pt-3 border-t border-pink-50">
+                        <div><p class="text-[10px] text-pink-400 uppercase tracking-wider">Orders</p><p class="text-sm font-bold text-pink-800">${infOrders.length}</p></div>
+                        <div><p class="text-[10px] text-pink-400 uppercase tracking-wider">Delivered</p><p class="text-sm font-bold text-green-600">${delivered.length}</p></div>
+                        <div><p class="text-[10px] text-pink-400 uppercase tracking-wider">Earnings</p><p class="text-sm font-bold text-pink-700">₹${Math.round(earnings).toLocaleString('en-IN')}</p></div>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load influencers</p>';
+        }
+    }
+
+    function generateRefCode() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let code = '';
+        for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+        document.getElementById('ai-code').value = code;
+    }
+
+    async function addInfluencer(e) {
+        e.preventDefault();
+        const code = document.getElementById('ai-code').value.trim().toUpperCase();
+        try {
+            const { data: existing } = await db.from('influencers').select('id').eq('referral_code', code).single();
+            if (existing) { showToast('Referral code already taken', 'error'); return; }
+            const { error } = await db.from('influencers').insert([{
+                name: document.getElementById('ai-name').value.trim(),
+                email: document.getElementById('ai-email').value.trim(),
+                password: document.getElementById('ai-pass').value,
+                referral_code: code
+            }]);
+            if (error) throw error;
+            showToast('Influencer added!', 'success');
+            e.target.reset();
+            loadInfluencers();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to add influencer', 'error');
+        }
+    }
+
+    async function deleteInfluencer(id) {
+        if (!confirm('Remove this influencer?')) return;
+        try {
+            const { error } = await db.from('influencers').delete().eq('id', id);
+            if (error) throw error;
+            showToast('Influencer removed', 'success');
+            loadInfluencers();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to remove', 'error');
+        }
+    }
+
+    /* ==============================================
+       CUSTOMERS
+    ============================================== */
+    async function loadCustomers() {
+        const list = document.getElementById('admin-customer-list');
+        try {
+            const { data, error } = await db.from('customers').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            const customers = data || [];
+            if (customers.length === 0) {
+                list.innerHTML = '<p class="text-sm text-pink-400 text-center py-8">No customers yet</p>';
+                return;
+            }
+            list.innerHTML = customers.map(c => {
+                const date = new Date(c.created_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
+                return `<div class="admin-card p-4 flex items-center gap-4 fade-up">
+                    <div class="w-10 h-10 rounded-full bg-pink-50 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-user text-pink-300 text-sm"></i></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-pink-900">${c.name}</p>
+                        <p class="text-xs text-pink-400 mt-0.5">${c.phone} · Joined ${date}</p>
+                    </div>
+                    <button onclick="deleteCustomer('${c.id}')" class="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 transition-colors"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error(err);
+            list.innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load customers</p>';
+        }
+    }
+
+    async function deleteCustomer(id) {
+        if (!confirm('Remove this customer?')) return;
+        try {
+            const { error } = await db.from('customers').delete().eq('id', id);
+            if (error) throw error;
+            showToast('Customer removed', 'success');
+            loadCustomers();
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to remove', 'error');
+        }
+    }
+
+    /* ==============================================
+       UTILS
+    ============================================== */
+    function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied: ' + text, 'success')).catch(() => showToast('Copy failed', 'error'));
+    }
+
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const colors = { success:'bg-green-600', error:'bg-red-500', info:'bg-pink-600' };
+        const icons = { success:'fa-check', error:'fa-exclamation', info:'fa-info' };
+        toast.className = `pointer-events-auto ${colors[type]||colors.info} text-white px-4 py-3 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2`;
+        toast.style.animation = 'fadeUp .35s cubic-bezier(.16,1,.3,1) both';
+        toast.innerHTML = `<i class="fa-solid ${icons[type]||icons.info} text-xs opacity-80"></i> ${message}`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            toast.style.transition = 'all .25s ease';
+            setTimeout(() => toast.remove(), 250);
+        }, 2800);
+    }
+    </script>
+</body>
+</html>
