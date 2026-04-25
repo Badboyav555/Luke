@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUXE — Premium Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        pink: {
+                            50: '#fdf2f5', 100: '#fce7ee', 200: '#f9d0e0',
+                            300: '#f3a8c6', 400: '#e8a0bf', 500: '#c76a8a',
+                            600: '#b05070', 700: '#8f3d58', 800: '#6e2e45', 900: '#4d1f31'
+                        }
+                    },
+                    fontFamily: {
+                        display: ['Cormorant Garamond', 'serif'],
+                        sans: ['DM Sans', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'DM Sans', sans-serif; background: #ffffff; color: #2d2d2d; overflow-x: hidden; }
+        ::-webkit-scrollbar { display: none; }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 0%, rgba(199,106,138,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 100%, rgba(232,160,191,0.05) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .font-display { font-family: 'Cormorant Garamond', serif; }
+
+        .modal-overlay {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            transform: translateY(40px) scale(0.97);
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .modal-overlay.active .modal-content {
+            transform: translateY(0) scale(1);
+        }
+
+        .product-card {
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
+        }
+        .product-card:active { transform: scale(0.97); }
+        @media (hover: hover) {
+            .product-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 12px 32px rgba(199,106,138,0.12);
+            }
+        }
+
+        .slider-track {
+            display: flex;
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            will-change: transform;
+        }
+        .slider-track.dragging { transition: none; }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #fdf2f5 25%, #fce7ee 50%, #fdf2f5 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 12px;
+        }
+
+        .btn-primary {
+            position: relative;
+            overflow: hidden;
+            background: #c76a8a;
+            color: white;
+            transition: background 0.2s, transform 0.15s;
+        }
+        .btn-primary:active { transform: scale(0.97); background: #b05070; }
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+            pointer-events: none;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up { animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastOut {
+            from { opacity: 1; transform: translateY(0) scale(1); }
+            to { opacity: 0; transform: translateY(-20px) scale(0.95); }
+        }
+        .toast-in { animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .toast-out { animation: toastOut 0.25s ease both; }
+
+        .tab-indicator {
+            transition: left 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .sticky-buy { box-shadow: 0 -4px 24px rgba(199,106,138,0.15); }
+
+        .input-field {
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-field:focus {
+            border-color: #c76a8a;
+            box-shadow: 0 0 0 3px rgba(199,106,138,0.1);
+            outline: none;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 w-[90%] max-w-sm pointer-events-none"></div>
+
+    <!-- Navbar -->
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-pink-100/60">
+        <div class="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
+            <a href="#" class="font-display text-2xl font-bold tracking-wide text-pink-800" onclick="goHome()">LUXE</a>
+            <div id="nav-actions" class="flex items-center gap-3">
+                <button id="nav-login-btn" onclick="openLoginModal()" class="text-sm font-medium text-pink-700 px-4 py-2 rounded-full border border-pink-200 hover:bg-pink-50 transition-colors">
+                    Login
+                </button>
+                <button id="nav-user-btn" onclick="handleUserMenu()" class="hidden items-center gap-2 text-sm font-medium text-pink-700 px-4 py-2 rounded-full border border-pink-200 hover:bg-pink-50 transition-colors">
+                    <i class="fa-solid fa-user text-xs"></i>
+                    <span id="nav-user-name">User</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="main-content" class="pt-14 pb-20 relative z-10">
+
+        <!-- Products Page -->
+        <div id="page-products" class="max-w-lg mx-auto px-4 py-5">
+            <p class="text-xs font-medium text-pink-400 tracking-widest uppercase mb-1">Curated Collection</p>
+            <h1 class="font-display text-3xl font-bold text-pink-900 mb-5">Our Products</h1>
+            <div id="product-grid" class="grid grid-cols-2 gap-3">
+                <div class="skeleton h-52"></div>
+                <div class="skeleton h-52"></div>
+                <div class="skeleton h-52"></div>
+                <div class="skeleton h-52"></div>
+            </div>
+            <div id="empty-state" class="hidden text-center py-20">
+                <i class="fa-regular fa-face-meh text-4xl text-pink-300 mb-3"></i>
+                <p class="text-pink-400">No products available yet</p>
+            </div>
+        </div>
+
+        <!-- Product Detail Page -->
+        <div id="page-detail" class="hidden">
+            <div id="detail-content"></div>
+        </div>
+
+        <!-- Checkout Page -->
+        <div id="page-checkout" class="hidden max-w-lg mx-auto px-4 py-5">
+            <button onclick="goBack()" class="flex items-center gap-2 text-sm text-pink-600 mb-5 font-medium">
+                <i class="fa-solid fa-arrow-left text-xs"></i> Back
+            </button>
+            <h2 class="font-display text-2xl font-bold text-pink-900 mb-6">Checkout</h2>
+            <div id="checkout-product" class="bg-pink-50 rounded-2xl p-4 mb-6"></div>
+            <form id="checkout-form" class="space-y-4" onsubmit="placeOrder(event)">
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Full Name</label>
+                    <input type="text" id="co-name" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 bg-white text-sm" placeholder="Your full name">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Phone Number</label>
+                    <input type="tel" id="co-phone" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 bg-white text-sm" placeholder="10-digit phone number">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Delivery Address</label>
+                    <textarea id="co-address" required rows="3" class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 bg-white text-sm resize-none" placeholder="Full delivery address"></textarea>
+                </div>
+                <button type="submit" id="place-order-btn" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold mt-2">
+                    Place Order
+                </button>
+            </form>
+        </div>
+
+        <!-- Influencer Dashboard -->
+        <div id="page-influencer" class="hidden max-w-lg mx-auto px-4 py-5">
+            <button onclick="goHome()" class="flex items-center gap-2 text-sm text-pink-600 mb-5 font-medium">
+                <i class="fa-solid fa-arrow-left text-xs"></i> Products
+            </button>
+            <h2 class="font-display text-2xl font-bold text-pink-900 mb-1">Influencer Dashboard</h2>
+            <p class="text-sm text-pink-400 mb-6">Your referral code: <span id="inf-ref-code" class="font-bold text-pink-600"></span></p>
+
+            <div class="grid grid-cols-2 gap-3 mb-6">
+                <div class="bg-pink-50 rounded-2xl p-4">
+                    <p class="text-xs font-semibold text-pink-400 uppercase tracking-wider">Total Orders</p>
+                    <p id="inf-total-orders" class="font-display text-3xl font-bold text-pink-800 mt-1">0</p>
+                </div>
+                <div class="bg-pink-50 rounded-2xl p-4">
+                    <p class="text-xs font-semibold text-pink-400 uppercase tracking-wider">Earnings</p>
+                    <p id="inf-earnings" class="font-display text-3xl font-bold text-pink-800 mt-1">₹0</p>
+                </div>
+            </div>
+
+            <h3 class="text-sm font-semibold text-pink-700 mb-3 uppercase tracking-wider">Referral Orders</h3>
+            <div id="inf-orders-list" class="space-y-3">
+                <p class="text-sm text-pink-300 text-center py-8">No orders yet</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal-overlay fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center">
+        <div class="modal-content bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-3xl p-6 pb-8 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="font-display text-2xl font-bold text-pink-900">Welcome Back</h2>
+                <button onclick="closeLoginModal()" class="w-8 h-8 rounded-full bg-pink-50 flex items-center justify-center text-pink-400 hover:text-pink-600 transition-colors">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Login Tab Switcher -->
+            <div class="relative flex bg-pink-50 rounded-xl p-1 mb-6">
+                <div id="tab-indicator" class="tab-indicator absolute top-1 bottom-1 bg-white rounded-lg shadow-sm" style="left:4px;width:calc(50% - 4px)"></div>
+                <button onclick="switchLoginTab('customer')" id="tab-customer" class="relative z-10 flex-1 py-2.5 text-xs font-semibold text-pink-700 rounded-lg text-center transition-colors">Customer</button>
+                <button onclick="switchLoginTab('influencer')" id="tab-influencer" class="relative z-10 flex-1 py-2.5 text-xs font-semibold text-pink-400 rounded-lg text-center transition-colors">Influencer</button>
+            </div>
+
+            <!-- Customer Login Form -->
+            <form id="form-customer" onsubmit="loginCustomer(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Phone Number</label>
+                    <input type="tel" id="login-phone" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="10-digit number">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Password</label>
+                    <input type="password" id="login-pass" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="Your password">
+                </div>
+                <button type="submit" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold">Login</button>
+                <p class="text-center text-xs text-pink-400">New here? Contact admin to create an account</p>
+            </form>
+
+            <!-- Influencer Login Form -->
+            <form id="form-influencer" onsubmit="loginInfluencer(event)" class="space-y-4 hidden">
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Email</label>
+                    <input type="email" id="login-email" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="your@email.com">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-pink-700 mb-1.5 uppercase tracking-wider">Password</label>
+                    <input type="password" id="login-inf-pass" required class="input-field w-full px-4 py-3 rounded-xl border border-pink-200 text-sm" placeholder="Your password">
+                </div>
+                <button type="submit" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold">Login</button>
+                <p class="text-center text-xs text-pink-400">Want to become an influencer? Contact admin</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- User Menu Dropdown -->
+    <div id="user-menu" class="fixed top-14 right-4 z-[90] bg-white rounded-xl shadow-lg border border-pink-100 py-2 w-52 hidden">
+        <button onclick="goInfluencerDashboard()" id="menu-influencer-btn" class="hidden w-full text-left px-4 py-2.5 text-sm text-pink-700 hover:bg-pink-50 transition-colors">
+            <i class="fa-solid fa-chart-line text-xs mr-2 text-pink-400"></i> Dashboard
+        </button>
+        <button onclick="logout()" class="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors">
+            <i class="fa-solid fa-right-from-bracket text-xs mr-2"></i> Logout
+        </button>
+    </div>
+
+    <script>
+    /* ==============================================
+       SUPABASE CONFIG — Apni keys yahan daalo
+    ============================================== */
+    const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+    const SUPABASE_KEY = 'YOUR_ANON_KEY';
+
+    /* FIXED — db naam ka variable hai, koi bug nahi */
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    /* ==============================================
+       STATE
+    ============================================== */
+    let currentUser = null;
+    let allProducts = [];
+    let currentProductId = null;
+    let pendingRefCode = null;
+    let currentSliderIdx = 0;
+    let sliderDragStartX = 0;
+    let sliderDragDelta = 0;
+    let isDragging = false;
+
+    /* ==============================================
+       INIT
+    ============================================== */
+    document.addEventListener('DOMContentLoaded', () => {
+        // URL se referral code pakad
+        const urlParams = new URLSearchParams(window.location.search);
+        const ref = urlParams.get('ref');
+        if (ref) {
+            localStorage.setItem('referral_code', ref);
+            pendingRefCode = ref;
+            showToast('Referral code applied!', 'success');
+        }
+
+        // Saved login check
+        const saved = localStorage.getItem('luxe_user');
+        if (saved) {
+            try {
+                currentUser = JSON.parse(saved);
+                updateNavForLoggedIn();
+            } catch(e) {
+                localStorage.removeItem('luxe_user');
+            }
+        }
+
+        // Products load
+        loadProducts();
+
+        // Click outside to close user menu
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('user-menu');
+            const navBtn = document.getElementById('nav-user-btn');
+            if (!menu.contains(e.target) && !navBtn.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
+    });
+
+    /* ==============================================
+       PRODUCTS
+    ============================================== */
+    async function loadProducts() {
+        const grid = document.getElementById('product-grid');
+        const empty = document.getElementById('empty-state');
+        try {
+            const { data, error } = await db
+                .from('products')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            allProducts = data || [];
+            if (allProducts.length === 0) {
+                grid.classList.add('hidden');
+                empty.classList.remove('hidden');
+                return;
+            }
+
+            grid.classList.remove('hidden');
+            empty.classList.add('hidden');
+            renderProductGrid(allProducts);
+        } catch (err) {
+            console.error('Product load error:', err);
+            grid.innerHTML = `<div class="col-span-2 text-center py-16">
+                <i class="fa-solid fa-triangle-exclamation text-3xl text-pink-300 mb-3"></i>
+                <p class="text-sm text-pink-400">Failed to load products</p>
+                <p class="text-xs text-pink-300 mt-1">Check Supabase configuration</p>
+            </div>`;
+        }
+    }
+
+    function renderProductGrid(products) {
+        const grid = document.getElementById('product-grid');
+        grid.innerHTML = products.map((p, i) => {
+            const img = (p.images && p.images.length > 0) ? p.images[0] : 'https://picsum.photos/seed/luxe' + p.id + '/400/500.jpg';
+            return `<div class="product-card bg-white rounded-2xl overflow-hidden border border-pink-100/80 cursor-pointer fade-up"
+                         style="animation-delay: ${i * 60}ms"
+                         onclick="openProductDetail('${p.id}')">
+                <div class="aspect-[3/4] overflow-hidden bg-pink-50">
+                    <img src="${img}" alt="${p.name}" class="w-full h-full object-cover" loading="lazy"
+                         onerror="this.src='https://picsum.photos/seed/fallback${p.id}/400/500.jpg'">
+                </div>
+                <div class="p-3">
+                    <h3 class="text-sm font-medium text-pink-900 truncate">${p.name}</h3>
+                    <p class="text-sm font-bold text-pink-600 mt-0.5">₹${Number(p.price).toLocaleString('en-IN')}</p>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    /* ==============================================
+       PRODUCT DETAIL
+    ============================================== */
+    function openProductDetail(id) {
+        const product = allProducts.find(p => p.id === id);
+        if (!product) return;
+        currentProductId = id;
+        currentSliderIdx = 0;
+
+        const images = (product.images && product.images.length > 0)
+            ? product.images
+            : [`https://picsum.photos/seed/detail${id}/600/750.jpg`];
+
+        const container = document.getElementById('detail-content');
+        container.innerHTML = `
+            <div class="max-w-lg mx-auto">
+                <button onclick="goBack()" class="fixed top-16 left-4 z-30 w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-sm flex items-center justify-center text-pink-700">
+                    <i class="fa-solid fa-arrow-left text-xs"></i>
+                </button>
+
+                <div class="relative overflow-hidden bg-pink-50" id="slider-container"
+                     ontouchstart="sliderTouchStart(event)" ontouchmove="sliderTouchMove(event)" ontouchend="sliderTouchEnd(event)">
+                    <div class="slider-track" id="slider-track">
+                        ${images.map(img => `
+                            <div class="w-full flex-shrink-0 aspect-[4/5]">
+                                <img src="${img}" alt="" class="w-full h-full object-cover"
+                                     onerror="this.src='https://picsum.photos/seed/err${Math.random()}/600/750.jpg'">
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${images.length > 1 ? `
+                        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
+                            ${images.map((_, i) => `
+                                <div class="slider-dot w-1.5 h-1.5 rounded-full transition-all duration-300 ${i === 0 ? 'bg-white w-4' : 'bg-white/50'}"></div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+
+                <div class="px-4 py-5">
+                    <h1 class="font-display text-2xl font-bold text-pink-900">${product.name}</h1>
+                    <p class="text-xl font-bold text-pink-600 mt-1">₹${Number(product.price).toLocaleString('en-IN')}</p>
+                    ${product.description ? `<p class="text-sm text-pink-400 mt-3 leading-relaxed">${product.description}</p>` : ''}
+
+                    <div class="sticky-buy fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-4 z-20">
+                        <div class="max-w-lg mx-auto">
+                            <button onclick="handleBuyNow('${id}')" class="btn-primary w-full py-3.5 rounded-xl text-sm font-semibold">
+                                Buy Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        showPage('page-detail');
+        window.scrollTo(0, 0);
+    }
+
+    /* Image Slider Touch */
+    function sliderTouchStart(e) {
+        isDragging = true;
+        sliderDragStartX = e.touches[0].clientX;
+        sliderDragDelta = 0;
+        const track = document.getElementById('slider-track');
+        if (track) track.classList.add('dragging');
+    }
+
+    function sliderTouchMove(e) {
+        if (!isDragging) return;
+        sliderDragDelta = e.touches[0].clientX - sliderDragStartX;
+        const track = document.getElementById('slider-track');
+        const container = document.getElementById('slider-container');
+        if (!track || !container) return;
+        const slideWidth = container.offsetWidth;
+        const offset = -(currentSliderIdx * slideWidth) + sliderDragDelta;
+        track.style.transform = `translateX(${offset}px)`;
+    }
+
+    function sliderTouchEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        const track = document.getElementById('slider-track');
+        if (track) track.classList.remove('dragging');
+
+        const container = document.getElementById('slider-container');
+        if (!container) return;
+        const slideWidth = container.offsetWidth;
+        const threshold = slideWidth * 0.2;
+
+        const product = allProducts.find(p => p.id === currentProductId);
+        const totalSlides = product && product.images && product.images.length > 0 ? product.images.length : 1;
+
+        if (sliderDragDelta < -threshold && currentSliderIdx < totalSlides - 1) {
+            currentSliderIdx++;
+        } else if (sliderDragDelta > threshold && currentSliderIdx > 0) {
+            currentSliderIdx--;
+        }
+
+        updateSliderPosition();
+    }
+
+    function updateSliderPosition() {
+        const track = document.getElementById('slider-track');
+        const container = document.getElementById('slider-container');
+        if (!track || !container) return;
+        const slideWidth = container.offsetWidth;
+        track.style.transform = `translateX(${-currentSliderIdx * slideWidth}px)`;
+
+        const dots = container.querySelectorAll('.slider-dot');
+        dots.forEach((dot, i) => {
+            if (i === currentSliderIdx) {
+                dot.className = 'slider-dot w-4 h-1.5 rounded-full transition-all duration-300 bg-white';
+            } else {
+                dot.className = 'slider-dot w-1.5 h-1.5 rounded-full transition-all duration-300 bg-white/50';
+            }
+        });
+    }
+
+    /* ==============================================
+       BUY FLOW
+    ============================================== */
+    function handleBuyNow(productId) {
+        if (!currentUser) {
+            openLoginModal();
+            return;
+        }
+        openCheckout(productId);
+    }
+
+    function openCheckout(productId) {
+        const product = allProducts.find(p => p.id === productId);
+        if (!product) return;
+
+        const img = (product.images && product.images.length > 0) ? product.images[0] : `https://picsum.photos/seed/co${productId}/200/200.jpg`;
+        document.getElementById('checkout-product').innerHTML = `
+            <div class="flex gap-4">
+                <img src="${img}" alt="" class="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+                     onerror="this.src='https://picsum.photos/seed/coerr/200/200.jpg'">
+                <div>
+                    <h3 class="text-sm font-semibold text-pink-900">${product.name}</h3>
+                    <p class="text-lg font-bold text-pink-600 mt-1">₹${Number(product.price).toLocaleString('en-IN')}</p>
+                </div>
+            </div>
+        `;
+
+        if (currentUser) {
+            if (currentUser.name) document.getElementById('co-name').value = currentUser.name;
+            if (currentUser.phone) document.getElementById('co-phone').value = currentUser.phone;
+        }
+
+        showPage('page-checkout');
+        window.scrollTo(0, 0);
+    }
+
+    async function placeOrder(e) {
+        e.preventDefault();
+        const btn = document.getElementById('place-order-btn');
+        btn.disabled = true;
+        btn.textContent = 'Placing Order...';
+
+        const product = allProducts.find(p => p.id === currentProductId);
+        if (!product) { btn.disabled = false; btn.textContent = 'Place Order'; return; }
+
+        const refCode = localStorage.getItem('referral_code') || null;
+        let infId = null, infCode = null;
+
+        if (refCode) {
+            try {
+                const { data: inf } = await db
+                    .from('influencers')
+                    .select('id, referral_code')
+                    .eq('referral_code', refCode)
+                    .single();
+                if (inf) {
+                    infId = inf.id;
+                    infCode = inf.referral_code;
+                }
+            } catch(ex) { /* ignore */ }
+        }
+
+        const orderData = {
+            customer_id: currentUser.id,
+            customer_name: document.getElementById('co-name').value.trim(),
+            phone: document.getElementById('co-phone').value.trim(),
+            address: document.getElementById('co-address').value.trim(),
+            product_id: product.id,
+            product_name: product.name,
+            amount: Number(product.price),
+            referral_code: infCode,
+            influencer_id: infId,
+            status: 'pending'
+        };
+
+        try {
+            const { error } = await db.from('orders').insert([orderData]);
+            if (error) throw error;
+
+            showToast('Order placed successfully!', 'success');
+            document.getElementById('checkout-form').reset();
+            goHome();
+        } catch (err) {
+            console.error('Order error:', err);
+            showToast('Failed to place order. Please try again.', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Place Order';
+        }
+    }
+
+    /* ==============================================
+       AUTH
+    ============================================== */
+    function openLoginModal() {
+        document.getElementById('login-modal').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLoginModal() {
+        document.getElementById('login-modal').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    function switchLoginTab(tab) {
+        const indicator = document.getElementById('tab-indicator');
+        const tabCust = document.getElementById('tab-customer');
+        const tabInf = document.getElementById('tab-influencer');
+        const formCust = document.getElementById('form-customer');
+        const formInf = document.getElementById('form-influencer');
+
+        if (tab === 'customer') {
+            indicator.style.left = '4px';
+            indicator.style.width = 'calc(50% - 4px)';
+            tabCust.classList.replace('text-pink-400', 'text-pink-700');
+            tabInf.classList.replace('text-pink-700', 'text-pink-400');
+            formCust.classList.remove('hidden');
+            formInf.classList.add('hidden');
+        } else {
+            indicator.style.left = 'calc(50%)';
+            indicator.style.width = 'calc(50% - 4px)';
+            tabInf.classList.replace('text-pink-400', 'text-pink-700');
+            tabCust.classList.replace('text-pink-700', 'text-pink-400');
+            formInf.classList.remove('hidden');
+            formCust.classList.add('hidden');
+        }
+    }
+
+    async function loginCustomer(e) {
+        e.preventDefault();
+        const phone = document.getElementById('login-phone').value.trim();
+        const pass = document.getElementById('login-pass').value;
+
+        try {
+            const { data, error } = await db
+                .from('customers')
+                .select('*')
+                .eq('phone', phone)
+                .eq('password', pass)
+                .single();
+
+            if (error || !data) {
+                showToast('Invalid phone number or password', 'error');
+                return;
+            }
+
+            currentUser = { id: data.id, type: 'customer', name: data.name, phone: data.phone };
+            localStorage.setItem('luxe_user', JSON.stringify(currentUser));
+            updateNavForLoggedIn();
+            closeLoginModal();
+            showToast(`Welcome back, ${data.name}!`, 'success');
+            document.getElementById('form-customer').reset();
+        } catch (err) {
+            console.error('Login error:', err);
+            showToast('Login failed. Please try again.', 'error');
+        }
+    }
+
+    async function loginInfluencer(e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value.trim();
+        const pass = document.getElementById('login-inf-pass').value;
+
+        try {
+            const { data, error } = await db
+                .from('influencers')
+                .select('*')
+                .eq('email', email)
+                .eq('password', pass)
+                .single();
+
+            if (error || !data) {
+                showToast('Invalid email or password', 'error');
+                return;
+            }
+
+            currentUser = {
+                id: data.id, type: 'influencer', name: data.name,
+                email: data.email, referral_code: data.referral_code
+            };
+            localStorage.setItem('luxe_user', JSON.stringify(currentUser));
+            updateNavForLoggedIn();
+            closeLoginModal();
+            showToast(`Welcome, ${data.name}!`, 'success');
+            document.getElementById('form-influencer').reset();
+        } catch (err) {
+            console.error('Login error:', err);
+            showToast('Login failed. Please try again.', 'error');
+        }
+    }
+
+    function logout() {
+        currentUser = null;
+        localStorage.removeItem('luxe_user');
+        document.getElementById('user-menu').classList.add('hidden');
+        updateNavForLoggedOut();
+        goHome();
+        showToast('Logged out successfully', 'success');
+    }
+
+    function updateNavForLoggedIn() {
+        document.getElementById('nav-login-btn').classList.add('hidden');
+        const userBtn = document.getElementById('nav-user-btn');
+        userBtn.classList.remove('hidden');
+        userBtn.classList.add('flex');
+        document.getElementById('nav-user-name').textContent = currentUser.name || 'User';
+
+        const infBtn = document.getElementById('menu-influencer-btn');
+        if (currentUser.type === 'influencer') {
+            infBtn.classList.remove('hidden');
+        } else {
+            infBtn.classList.add('hidden');
+        }
+    }
+
+    function updateNavForLoggedOut() {
+        document.getElementById('nav-login-btn').classList.remove('hidden');
+        const userBtn = document.getElementById('nav-user-btn');
+        userBtn.classList.add('hidden');
+        userBtn.classList.remove('flex');
+    }
+
+    function handleUserMenu() {
+        document.getElementById('user-menu').classList.toggle('hidden');
+    }
+
+    /* ==============================================
+       INFLUENCER DASHBOARD
+    ============================================== */
+    async function goInfluencerDashboard() {
+        document.getElementById('user-menu').classList.add('hidden');
+        if (!currentUser || currentUser.type !== 'influencer') return;
+
+        document.getElementById('inf-ref-code').textContent = currentUser.referral_code || 'N/A';
+        showPage('page-influencer');
+        window.scrollTo(0, 0);
+
+        try {
+            const { data: orders, error } = await db
+                .from('orders')
+                .select('customer_name, product_name, amount, status')
+                .eq('influencer_id', currentUser.id)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            const list = orders || [];
+            document.getElementById('inf-total-orders').textContent = list.length;
+
+            const deliveredOrders = list.filter(o => o.status === 'delivered');
+            const earnings = deliveredOrders.reduce((sum, o) => sum + (Number(o.amount) * 0.2), 0);
+            document.getElementById('inf-earnings').textContent = '₹' + Math.round(earnings).toLocaleString('en-IN');
+
+            if (list.length === 0) {
+                document.getElementById('inf-orders-list').innerHTML = '<p class="text-sm text-pink-300 text-center py-8">No referral orders yet</p>';
+                return;
+            }
+
+            document.getElementById('inf-orders-list').innerHTML = list.map(o => {
+                const statusColor = o.status === 'delivered' ? 'bg-green-50 text-green-600'
+                    : o.status === 'shipped' ? 'bg-blue-50 text-blue-600'
+                    : o.status === 'cancelled' ? 'bg-red-50 text-red-500'
+                    : 'bg-pink-50 text-pink-500';
+                return `<div class="bg-pink-50/70 rounded-xl p-4">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="text-sm font-semibold text-pink-900">${o.customer_name}</p>
+                            <p class="text-xs text-pink-400 mt-0.5">${o.product_name}</p>
+                        </div>
+                        <span class="text-xs font-semibold px-2.5 py-1 rounded-full ${statusColor}">${o.status}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm font-bold text-pink-600">₹${Number(o.amount).toLocaleString('en-IN')}</p>
+                        ${o.status === 'delivered' ? `<p class="text-xs text-green-500 font-medium">+₹${Math.round(Number(o.amount) * 0.2)} commission</p>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (err) {
+            console.error('Dashboard error:', err);
+            document.getElementById('inf-orders-list').innerHTML = '<p class="text-sm text-red-400 text-center py-8">Failed to load data</p>';
+        }
+    }
+
+    /* ==============================================
+       PAGE NAVIGATION
+    ============================================== */
+    const pages = ['page-products', 'page-detail', 'page-checkout', 'page-influencer'];
+    let pageHistory = ['page-products'];
+
+    function showPage(pageId) {
+        pages.forEach(p => {
+            const el = document.getElementById(p);
+            if (p === pageId) {
+                el.classList.remove('hidden');
+                el.classList.add('fade-up');
+            } else {
+                el.classList.add('hidden');
+                el.classList.remove('fade-up');
+            }
+        });
+        if (pageHistory[pageHistory.length - 1] !== pageId) {
+            pageHistory.push(pageId);
+        }
+    }
+
+    function goBack() {
+        pageHistory.pop();
+        const prev = pageHistory[pageHistory.length - 1] || 'page-products';
+        showPage(prev);
+        window.scrollTo(0, 0);
+    }
+
+    function goHome() {
+        pageHistory = ['page-products'];
+        showPage('page-products');
+        window.scrollTo(0, 0);
+    }
+
+    /* ==============================================
+       TOAST
+    ============================================== */
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        const colors = { success: 'bg-green-600', error: 'bg-red-500', info: 'bg-pink-600' };
+        const icons = { success: 'fa-check', error: 'fa-exclamation', info: 'fa-info' };
+        toast.className = `toast-in pointer-events-auto ${colors[type] || colors.info} text-white px-4 py-3 rounded-xl text-sm font-medium shadow-lg flex items-center gap-2`;
+        toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} text-xs opacity-80"></i> ${message}`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.replace('toast-in', 'toast-out');
+            setTimeout(() => toast.remove(), 250);
+        }, 2800);
+    }
+    </script>
+</body>
+</html>
